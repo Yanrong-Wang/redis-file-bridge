@@ -12,7 +12,7 @@
 要求安装 Docker Desktop 或 Docker Engine + Compose。
 
 ```bash
-git clone <你的仓库地址>
+git clone https://github.com/Yanrong-Wang/redis-file-bridge.git
 cd redis-file-bridge
 docker compose -f docker-compose.demo.yml up --build
 ```
@@ -68,7 +68,7 @@ docker compose -f docker-compose.demo.yml down -v
 macOS/Linux：
 
 ```bash
-git clone <你的仓库地址>
+git clone https://github.com/Yanrong-Wang/redis-file-bridge.git
 cd redis-file-bridge
 python3 -m venv .venv
 source .venv/bin/activate
@@ -79,7 +79,7 @@ python -m bridge.demo
 Windows PowerShell：
 
 ```powershell
-git clone <你的仓库地址>
+git clone https://github.com/Yanrong-Wang/redis-file-bridge.git
 cd redis-file-bridge
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
@@ -402,6 +402,47 @@ curl -X POST http://127.0.0.1:8080/api/tasks/TASK_ID/download-ticket \
 
 接口返回 60 秒有效、只能使用一次的 `download_url`。浏览器使用该地址原生下载文件，
 避免依赖 JavaScript Blob 下载。短期 URL 使用 HMAC 签名，并通过 nonce 防止重放。
+
+完整 API 下载示例（需要安装 `jq`）：
+
+```bash
+BASE_URL=http://127.0.0.1:8080
+TOKEN=demo-browser-token
+
+TASK_ID=$(
+  curl -sS -X POST "$BASE_URL/api/tasks" \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "X-Requester: api-demo" \
+    -H "Content-Type: application/json" \
+    -d '{"file_id":"demo-file"}' |
+  jq -r .task_id
+)
+
+while true; do
+  STATE=$(
+    curl -sS "$BASE_URL/api/tasks/$TASK_ID" \
+      -H "Authorization: Bearer $TOKEN" |
+    jq -r .state
+  )
+  echo "state=$STATE"
+  [ "$STATE" = "cleaned" ] && break
+  [ "$STATE" = "failed" ] && exit 1
+  sleep 1
+done
+
+DOWNLOAD_URL=$(
+  curl -sS -X POST "$BASE_URL/api/tasks/$TASK_ID/download-ticket" \
+    -H "Authorization: Bearer $TOKEN" |
+  jq -r .download_url
+)
+
+curl -OJ "$BASE_URL$DOWNLOAD_URL"
+```
+
+执行成功后：
+
+- A 端持久副本在 `./downloads/<task_id>-example.txt`
+- API 下载副本保存在当前终端目录，文件名为 `example.txt`
 
 ## 密钥轮换
 
