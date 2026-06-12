@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Redis 文件回传</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; }
+    body { margin: 0; background: #f4f7fb; color: #172033; }
+    main { max-width: 760px; margin: 48px auto; padding: 32px; background: white;
+      border-radius: 16px; box-shadow: 0 12px 36px rgba(20, 40, 80, .10); }
+    h1 { margin-top: 0; }
+    label { display: block; margin: 18px 0 6px; font-weight: 600; }
+    input { box-sizing: border-box; width: 100%; padding: 11px; border: 1px solid #ccd5e3;
+      border-radius: 8px; font: inherit; }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    button, a.button { margin-top: 20px; padding: 11px 18px; border: 0; border-radius: 8px;
+      background: #2457d6; color: white; font: inherit; cursor: pointer;
+      text-decoration: none; }
+    button.secondary { background: #7b2635; }
+    button:disabled { opacity: .55; cursor: wait; }
+    #status { margin-top: 24px; padding: 14px; min-height: 60px; background: #f5f7fa;
+      border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .muted { color: #65718a; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>托管机文件回传</h1>
+  <p class="muted">目标 Agent：{{ agent_id }}</p>
+  <p><a href="/readme" target="_blank">查看本地部署与运行说明</a></p>
+  <label for="fileId">文件 ID（由托管机白名单定义）</label>
+  <input id="fileId" placeholder="例如 daily-report">
+  <label for="token">API Token</label>
+  <input id="token" type="password" autocomplete="current-password">
+  <label for="requester">操作人（用于审计）</label>
+  <input id="requester" placeholder="例如 amy.wang">
+  <div class="actions">
+    <button id="submit">发起回传任务</button>
+    <button id="cancel" class="secondary hidden">取消任务</button>
+    <button id="download" class="hidden">下载已落盘文件</button>
+  </div>
+  <div id="status">等待操作</div>
+</main>
+<script>
+  const submitButton = document.querySelector("#submit");
+  const cancelButton = document.querySelector("#cancel");
+  const downloadButton = document.querySelector("#download");
+  const statusBox = document.querySelector("#status");
+  let currentTaskId = null;
+  const terminal = new Set(["failed", "cancelled", "expired", "cleaned", "downloaded"]);
+  const ready = new Set(["stored_local", "cleaned", "downloaded"]);
+
+  const headers = () => ({
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${document.querySelector("#token").value}`,
+    "X-Requester": document.querySelector("#requester").value.trim()
+  });
+
+  async function readJson(response) {
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
+    return body;
+  }
+
+  async function poll(taskId) {
+    while (true) {
+      const task = await readJson(await fetch(`/api/tasks/${taskId}`, {headers: headers()}));
+      statusBox.textContent = JSON.stringify(task, null, 2);
+      if (ready.has(task.state) || task.download_ready) {
+        downloadButton.classList.remove("hidden");
+        cancelButton.classList.add("hidden");
+        submitButton.disabled = false;
+        return;
+      }
+      if (terminal.has(task.state)) {
+        cancelButton.classList.add("hidden");
+        submitButton.disabled = false;
+        if (task.state === "failed") throw new Error(task.error_message || task.error || "任务失败");
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+
+  submitButton.addEventListener("click", async () => {
+    submitButton.disabled = true;
+    downloadButton.classList.add("hidden");
+    try {
+      const task = await readJson(await fetch("/api/tasks", {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify({file_id: document.querySelector("#fileId").value.trim()})
+      }));
+      currentTaskId = task.task_id;
+      cancelButton.classList.remove("hidden");
+      statusBox.textContent = `任务已创建：${currentTaskId}`;
+      await poll(currentTaskId);
+    } catch (error) {
+      statusBox.textContent = `错误：${error.message}`;
+      submitButton.disabled = false;
+    }
+  });
+
+  cancelButton.addEventListener("click", async () => {
+    if (!currentTaskId) return;
+    const task = await readJson(await fetch(`/api/tasks/${currentTaskId}/cancel`, {
+      method: "POST", headers: headers()
+    }));
+    statusBox.textContent = JSON.stringify(task, null, 2);
+    cancelButton.classList.add("hidden");
+    submitButton.disabled = false;
+  });
+
+  downloadButton.addEventListener("click", async () => {
+    if (!currentTaskId) return;
+    try {
+      const ticket = await readJson(await fetch(
+        `/api/tasks/${currentTaskId}/download-ticket`,
+        {method: "POST", headers: headers()}
+      ));
+      const link = document.createElement("a");
+      link.href = ticket.download_url;
+      link.download = ticket.filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      statusBox.textContent +=
+        `\n已交给浏览器下载管理器：${ticket.filename}。` +
+        "A 端本地文件会继续保留，可再次下载。";
+    } catch (error) {
+      statusBox.textContent += `\n下载失败：${error.message}`;
+    }
+  });
+</script>
+</body>
+</html>

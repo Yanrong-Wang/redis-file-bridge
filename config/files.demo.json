@@ -1,0 +1,6 @@
+{
+  "demo-file": {
+    "path": "/data/example.txt",
+    "max_file_bytes": 104857600
+  }
+}

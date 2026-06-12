@@ -1,0 +1,12 @@
+.env
+.git
+.gitignore
+.pytest_cache
+.runtime
+.venv
+__pycache__
+audit.sqlite3*
+downloads/*
+snapshots
+tests
+

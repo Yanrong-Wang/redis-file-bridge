@@ -1,0 +1,2 @@
+This file came from machine B through encrypted Redis chunks.
+

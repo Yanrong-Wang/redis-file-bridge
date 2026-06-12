@@ -1,0 +1,11 @@
+{
+  "daily-report": {
+    "path": "/data/reports/daily.csv",
+    "max_file_bytes": 104857600,
+    "allowed_hours": "06:00-23:00"
+  },
+  "trade-log": {
+    "path": "/data/logs/trade.log",
+    "max_file_bytes": 52428800
+  }
+}

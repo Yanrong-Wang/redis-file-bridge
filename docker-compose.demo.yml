@@ -1,0 +1,58 @@
+services:
+  redis:
+    image: redis:7.4-alpine
+    command:
+      - redis-server
+      - --requirepass
+      - demo-redis-password
+      - --maxmemory
+      - 1gb
+      - --maxmemory-policy
+      - noeviction
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "demo-redis-password", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  machine-a:
+    build: .
+    command: ["python", "-m", "bridge.web"]
+    environment: &bridge-env
+      REDIS_URL: redis://:demo-redis-password@redis:6379/0
+      BRIDGE_PREFIX: broker_demo
+      BRIDGE_AGENT_ID: custodian_01
+      BRIDGE_KEY_ID: v1
+      BRIDGE_HMAC_KEY: demo-hmac-key-change-this-value-1234567890
+      BRIDGE_ENCRYPTION_KEY: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+      BRIDGE_API_TOKEN: demo-browser-token
+      BRIDGE_BIND_HOST: 0.0.0.0
+      BRIDGE_DOWNLOAD_DIR: /app/downloads
+      BRIDGE_AUDIT_DB: /app/downloads/audit.sqlite3
+      BRIDGE_SNAPSHOT_DIR: /tmp/redis-file-bridge-snapshots
+      BRIDGE_MAX_FILE_BYTES: 104857600
+      BRIDGE_WINDOW_SIZE: 16
+      BRIDGE_MAX_CONCURRENT_TRANSFERS: 1
+      BRIDGE_MAX_TRANSFER_BUFFER_BYTES: 314572800
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./downloads:/app/downloads
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  machine-b:
+    build: .
+    command: ["python", "-m", "bridge.agent"]
+    environment:
+      <<: *bridge-env
+      BRIDGE_FILE_MAP: /app/config/files.json
+    volumes:
+      - ./config/files.demo.json:/app/config/files.json:ro
+      - ./demo-data:/data:ro
+    depends_on:
+      redis:
+        condition: service_healthy

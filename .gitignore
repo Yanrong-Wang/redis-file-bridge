@@ -1,0 +1,14 @@
+.env
+.venv/
+.runtime/
+.demo-audit.sqlite3*
+.demo-snapshots/
+audit.sqlite3*
+snapshots/
+__pycache__/
+.pytest_cache/
+*.pyc
+config/.files.local-demo.json
+config/files.json
+downloads/*
+!downloads/.gitkeep
